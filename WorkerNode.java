@@ -9,7 +9,7 @@ public class WorkerNode {
             System.out.println("Usage: java WorkerNode <port>");
             return;
         }
-        
+
         PORT = Integer.parseInt(args[0]);
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -22,9 +22,8 @@ public class WorkerNode {
             e.printStackTrace();
         }
     }
-
-    static class WorkerHandler implements Runnable {
-        private Socket socket;
+    static class WorkerHandler implements Runnable { // Manages communication for each worker
+        private Socket socket; // represents the connection with a client (a worker node or master node)
 
         public WorkerHandler(Socket socket) {
             this.socket = socket;
@@ -33,7 +32,7 @@ public class WorkerNode {
         @Override
         public void run() {
             try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
+                BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()))) {
 
                 String message = in.readLine();
                 if (message == null) return;
@@ -41,10 +40,12 @@ public class WorkerNode {
                 System.out.println("Received: " + message);
 
                 if (message.equals("PING")) {
-                    out.println("PONG");
+                    out.write("PONG\n");
+                    out.flush();
                 } else if (message.equals("BROADCAST")) {
-                    out.println("BROADCAST_RECEIVED");
-                } else if (message.startsWith("CHAIN")) {
+                    out.write("BROADCAST_RECEIVED\n");
+                    out.flush();
+                } else {
                     handleChainMessage(message, out);
                 }
             } catch (IOException e) {
@@ -52,26 +53,30 @@ public class WorkerNode {
             }
         }
 
-        private void handleChainMessage(String message, PrintWriter out) throws IOException {
-            String[] parts = message.split("\\|");
-            String chainMessage = parts[1] + " -> Worker" + PORT;
+        private void handleChainMessage(String message, BufferedWriter out) throws IOException {
+            // Append this worker's id to the message
+            String chainMessage = message + " -> Worker" + PORT;
+            System.out.println("Forwarding: " + chainMessage);
 
             // Forward message to next worker
             int nextWorkerPort = PORT + 1;
-            try {
-                Socket nextWorkerSocket = new Socket("localhost", nextWorkerPort);
-                PrintWriter nextWorkerOut = new PrintWriter(nextWorkerSocket.getOutputStream(), true);
-                BufferedReader nextWorkerIn = new BufferedReader(new InputStreamReader(nextWorkerSocket.getInputStream()));
+            try (Socket nextWorkerSocket = new Socket("localhost", nextWorkerPort);
+                BufferedWriter nextWorkerOut = new BufferedWriter(new OutputStreamWriter(nextWorkerSocket.getOutputStream()));
+                BufferedReader nextWorkerIn = new BufferedReader(new InputStreamReader(nextWorkerSocket.getInputStream()))) {
 
-                nextWorkerOut.println("CHAIN|" + chainMessage);
+                nextWorkerOut.write(chainMessage + "\n");
+                nextWorkerOut.flush();
                 String response = nextWorkerIn.readLine();
-                nextWorkerSocket.close();
-
-                out.println(response);
+                out.write(response + "\n");
+                out.flush();
             } catch (ConnectException e) {
-                // Last worker in the chain, return the message to the master
-                out.println(chainMessage);
+                // Last worker in the chain returns the message to the master
+                out.write(chainMessage + "\n");
+                out.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
+
 }
