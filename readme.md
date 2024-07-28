@@ -1,4 +1,4 @@
-# Simple Distributed System Implementation
+# Simple Distributed Ping-Pong Implementation
 
 ## Overview
 
